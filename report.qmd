@@ -1,11 +1,8 @@
 ---
-title: "EV Power - Lab 4 Project Report"
-format: typst
+title: "Project 4"
+format: html
+editor: visual
 ---
-
-# Example Solution 1
-
-## **Part 0: libraries**
 
 ```{r}
 
@@ -14,18 +11,14 @@ library(dplyr)
 library(stringr)
 library(maps)
 library(ggplot2)
-
 ```
 
-## **Part 1:** **Defining Research Question**
+Part 1:Do states with a higher share of renewable energy also have more electric vehicles registered?
 
-Chosen Question:Do states with a higher share of renewable energy also have more electric vehicles registered?
-
-## **Part 2: Data Preparation and Cleaning**
 ```{r}
-#datsets
 
-ev_reg_state23 <- read.csv("data/ev-registrations-by-state-2023.csv")
+# datasets
+ev_reg_state23      <- read.csv("data/ev-registrations-by-state-2023.csv")
 avg_energy_price2123 <- read.csv("data/av-energy-price-2021-2023.csv")
 
 renew_use_21 <- read.csv("data/renew-use-2021.csv")
@@ -36,39 +29,7 @@ total_use_21 <- read.csv("data/total-use-2021.csv")
 total_use_22 <- read.csv("data/total-use-2022.csv")
 total_use_23 <- read.csv("data/total-use-2023.csv")
 
-cleaning_renew <- function(df) {
-  df %>%
-    mutate(
-      across(1, ~ str_to_upper(.x)),
-      across(3, ~ as.numeric(str_extract(.x, "\\d+\\.?\\d*")))
-    )
-}
-
-renew_use_23 <- cleaning_renew(renew_use_23)
-
-library(dplyr)
-library(stringr)
-
-avg_energy_price21_23 <- avg_energy_price2123 %>%
-  # rename 
-  rename(strings = Total.energy.average.price..dollars.per.million.Btu...) %>%
-  
-  # split 
-  mutate(strings = str_split(strings, ",")) %>%
-  mutate(
-    state = map_chr(strings, 1),
-    `2021` = map_chr(strings, 2),
-    `2022` = map_chr(strings, 3),
-    `2023` = map_chr(strings, 4)
-  ) %>%
-  select(-strings) %>%
-  
-  # clean numeric strings
-  mutate(across(c(`2021`, `2022`, `2023`),
-                ~ as.double(str_extract(.x, "\\d+\\.?\\d*")))) %>%
-  drop_na()
-avg_energy_price21_23
-
+# EV registrations (clean + numeric + lowercase state)
 ev_reg_state23 <- ev_reg_state23 %>%
   rename(State = 1) %>% 
   mutate(
@@ -78,47 +39,14 @@ ev_reg_state23 <- ev_reg_state23 %>%
   select(State, Count_evs) %>%
   drop_na()
 
-# states
+# states 
 name_matcher <- tibble(
-  full_names = c(state.name, "District of Columbia", "Total"),
-  abbr = c(state.abb, "DC", "US")
-)
+  full_names = c(state.name, "District of Columbia"),
+  abbr = c(state.abb, "DC")
+) %>% 
+  mutate(full_names = str_to_lower(full_names))
 
-ev_reg_state23
-
-renew_use_23
-
-avg_energy_price21_23
-
-renew_share <- renew_use_23 %>%
-  group_by(State) %>%
-  summarise(total_renewable = sum(Renewable_Use_2023))
-renew_share
-
-total_use_23_clean <- total_use_23 %>%
-  rename(Energy_Source = 1) %>%                   
-  pivot_longer(-Energy_Source,                  
-               names_to = "State", values_to = "value") %>%
-  group_by(State) %>%
-  summarise(Total_Use_2023 = sum(value, na.rm = TRUE), .groups = "drop") %>%
-  mutate(State = str_to_upper(State))
-
-
-total_use_23_clean
-renew_totals
-ev_by_state
-ev_reg_state23
-ev_by_state
-
-
-
-```
-
-
-
-```{r}
-
-#renew total:
+#totals
 renew_totals <- total_use_23 %>%
   rename(Energy_Source = 1) %>%
   filter(str_detect(str_to_lower(Energy_Source), "total\\s*renewable")) %>%
@@ -127,7 +55,6 @@ renew_totals <- total_use_23 %>%
   mutate(State = str_to_upper(State)) %>%
   filter(State != "US")
 
-# by state
 total_energy <- total_use_23 %>%      
   rename(Energy_Source = 1) %>%
   pivot_longer(-Energy_Source, names_to = "State", values_to = "value") %>%
@@ -136,90 +63,47 @@ total_energy <- total_use_23 %>%
   mutate(State = str_to_upper(State)) %>%
   filter(State != "US")
 
-# EV registrations 
-
-name_matcher <- tibble(full_names = c(state.name, "District of Columbia"),
-                       abbr = c(state.abb, "DC")) %>% 
-  mutate(full_names = str_to_lower(full_names))
-
-ev_by_state <- ev_by_state %>%
+#EV by state w abbs
+ev_by_state <- ev_reg_state23 %>%
   mutate(State = str_to_lower(State)) %>%
   left_join(name_matcher, by = c("State" = "full_names")) %>%
   transmute(State = str_to_upper(abbr), Count_evs) %>%
   filter(!is.na(State))
-ev_by_state
-#  Join + compute share
+
+#joins + compute ratio
 combined <- renew_totals %>%
   inner_join(total_energy, by = "State") %>%
   mutate(renew_share = 100 * total_renewable / Total_Use_2023) %>%
   inner_join(ev_by_state, by = "State")
 
-combined
-
-
-
 ```
 
-## PArt 3
+Part 4
 
 ```{r}
-
-
-
-
-```
-
-## **Part 4: Mapping Visualization**
-
-
-```{r}
-
-
-ggplot(combined, aes(x = renew_share, y = Count_evs, label = State)) +
-  geom_point() +
-  geom_text(vjust = -0.8, size = 3) +
-  geom_smooth(method = "lm", se = FALSE, color = "blue") +
-  scale_y_continuous(labels = scales::comma) +
-  labs(
-    title = "EV Count vs. Renewable Energy Share by State (2023)",
-    x = "Renewable Energy Share (%)",
-    y = "Number of EVs"
-  ) +
-  theme_minimal()
-
-library(ggplot2)
-library(dplyr)
-library(maps)
-
-# load
-us_states <- map_data("state")
-
-state_ref <- tibble(
-  State = state.abb,
-  region = tolower(state.name)
-)
-
-map_data_combined <- combined %>%
-  left_join(state_ref, by = "State") %>%
-  left_join(us_states, by = "region")
 
 ggplot(map_data_combined, aes(long, lat, group = group, fill = renew_share)) +
-  geom_polygon(color = "black") +
+  geom_polygon(colour = "black") +
   coord_fixed(1.3) +
-  scale_fill_viridis_c(option = "C", name = "Renewable %") +
+  scale_fill_gradient(
+    low = "lightgreen",
+    high = "darkgreen",
+    name = "Renewable %"
+  ) +
   labs(
     title = "Share of Renewable Energy by State (2023)",
     caption = "Data: total_use_2023 + ev_reg_state23"
   ) +
   theme_void()
 
+
 ggplot(map_data_combined, aes(long, lat, group = group, fill = Count_evs)) +
-  geom_polygon(color = "black") +
+  geom_polygon(colour = "black") +
   coord_fixed(1.3) +
   scale_fill_gradient(
     low = "lightblue",
     high = "darkblue",
-      trans = "log10",
+    trans = "log10",
     name = "EV registrations"
   ) +
   labs(
@@ -227,5 +111,17 @@ ggplot(map_data_combined, aes(long, lat, group = group, fill = Count_evs)) +
     caption = "Data: ev_reg_state23"
   ) +
   theme_void()
+
+
+ggplot(combined, aes(x = renew_share, y = Count_evs, label = State)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  scale_y_log10() +
+  labs(
+    title = "EV Count (log scale) vs. Renewable Energy Share by State (2023)",
+    x = "Renewable Energy Share (%)",
+    y = "Number of EVs (log scale)"
+  ) +
+  theme_minimal()
 
 ```
